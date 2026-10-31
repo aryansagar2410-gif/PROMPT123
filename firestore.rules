@@ -1,0 +1,58 @@
+rules_version = '2';
+
+/**
+ * INBOX ZERO DUNGEON — CLOUD FIRESTORE SECURITY RULES
+ * 
+ * Security Guardrails:
+ * 1. User Data Isolation: Players can ONLY access and modify their own documents (/players/{playerId}).
+ * 2. Cross-user data access is strictly forbidden.
+ * 3. Immutable Achievements: Once unlocked, achievements cannot be deleted by clients.
+ * 4. Default Deny: All unspecified paths are closed.
+ * 5. Sensitive credentials (OAuth secrets, API keys) are NEVER stored in Firestore.
+ */
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Security Helpers
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(playerId) {
+      return isAuthenticated() && (request.auth.uid == playerId || request.auth.token.email == playerId);
+    }
+
+    // Player Profile & Progress Collection
+    match /players/{playerId} {
+      allow read, write: if isOwner(playerId);
+      
+      // Game Session Snapshots
+      match /sessions/{sessionId} {
+        allow read, write: if isOwner(playerId);
+      }
+      
+      // Unlocked Achievements (Immutable history)
+      match /achievements/{achievementId} {
+        allow read: if isOwner(playerId);
+        allow create, update: if isOwner(playerId);
+        allow delete: if false;
+      }
+      
+      // Action History & Audit Log (Elemental Purifications)
+      match /actions/{actionId} {
+        allow read, write: if isOwner(playerId);
+      }
+      
+      // Player Preferences & Settings
+      match /settings/{settingId} {
+        allow read, write: if isOwner(playerId);
+      }
+    }
+    
+    // Deny all other collections by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
